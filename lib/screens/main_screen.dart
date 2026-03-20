@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_nav_bar/google_nav_bar.dart';
 import 'home_screen.dart';
+import 'chatbot_screen.dart';
+import 'alerts_screen.dart';
+import 'doctor_screen.dart';
+import 'analytics_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -14,10 +18,10 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _pages = const [
     HomeScreen(),
-    Center(child: Text("Predict", style: TextStyle(color: Colors.white, fontSize: 24))),
-    Center(child: Text("SOS", style: TextStyle(color: Colors.white, fontSize: 24))),
-    Center(child: Text("Dashboard", style: TextStyle(color: Colors.white, fontSize: 24))),
-    Center(child: Text("More", style: TextStyle(color: Colors.white, fontSize: 24))),
+    ChatBotScreen(),
+    AlertsScreen(),
+    DoctorScreen(),
+    AnalyticsScreen(),
   ];
 
   @override
@@ -57,10 +61,10 @@ class _MainScreenState extends State<MainScreen> {
               },
               tabs: const [
                 GButton(icon: Icons.home, text: "Home"),
-                GButton(icon: Icons.medical_information, text: "Predict"),
-                GButton(icon: Icons.emergency, text: "SOS"),
-                GButton(icon: Icons.dashboard, text: "Dashboard"),
-                GButton(icon: Icons.more_horiz, text: "More"),
+                GButton(icon: Icons.chat_bubble, text: "Chat Bot"),
+                GButton(icon: Icons.travel_explore, text: "Alerts"),
+                GButton(icon: Icons.local_hospital, text: "Doctors"),
+                GButton(icon: Icons.more_horiz, text: "Analytics"),
               ],
             ),
           ),
