@@ -43,3 +43,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# chatbot
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+ ̑faiss.index
