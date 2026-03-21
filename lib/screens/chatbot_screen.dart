@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import '../data/offline_disease_db.dart';
+import '../data/symptom_checker_model.dart';
 
 class ChatBotScreen extends StatefulWidget {
   const ChatBotScreen({super.key});
@@ -28,12 +29,12 @@ class _ChatBotScreenState extends State<ChatBotScreen>
   int _typingIndex = 0;
   bool _isTyping = false;
 
-  final String apiKey = "AIzaSyB9U9fGkupQD1t-YW2_S91_NzKWFFXdOjY";
+  final String apiKey = "AIzaSyCJaTzIZyqJ_TqLyzXCkhuaLodESllcaM4";
 
   // ─── Online: Gemini API ──────────────────────────────────────────────────
   Future<String> sendMessageToGemini(String userMessage) async {
     const String apiUrl =
-        "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent";
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent";
 
     try {
       final response = await http.post(
@@ -158,6 +159,46 @@ class _ChatBotScreenState extends State<ChatBotScreen>
 
     final botReply = results[0]; // first result is always the actual reply
     _typewriterReveal(botReply);
+  }
+
+  // ─── Symptom Checker bottom sheet ────────────────────────────────────────
+  void _openSymptomChecker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return _SymptomCheckerSheet(
+          onPredict: (Set<String> selectedIds) async {
+            Navigator.pop(ctx); // close sheet
+
+            // Build user-facing message that lists selected symptoms
+            final labels = allSymptoms
+                .where((s) => selectedIds.contains(s.id))
+                .map((s) => s.label)
+                .join(', ');
+
+            setState(() {
+              messages.add({
+                "type": "text_user",
+                "content": "Symptom Check: $labels",
+                "isTyping": false,
+              });
+              _isLoading = true;
+            });
+            _scrollToBottom();
+
+            // 7-second loader + prediction run in parallel
+            final predictions = predictDiseases(selectedIds);
+            final response = formatPredictionResponse(selectedIds, predictions);
+
+            await Future.delayed(const Duration(seconds: 7));
+
+            _typewriterReveal(response);
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -493,6 +534,22 @@ class _ChatBotScreenState extends State<ChatBotScreen>
         ],
       ),
 
+      // Floating action button for symptom checker (Offline only)
+      floatingActionButton: _offlineMode
+          ? FloatingActionButton.extended(
+              onPressed: _openSymptomChecker,
+              backgroundColor: Colors.orange.shade800,
+              icon: const Icon(Icons.medical_services, color: Colors.white),
+              label: const Text(
+                'Symptom Checker',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            )
+          : null,
+
       // Bottom input bar
       bottomNavigationBar: SafeArea(
         child: Container(
@@ -580,6 +637,215 @@ class _ChatBotScreenState extends State<ChatBotScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Symptom Checker Bottom Sheet Widget ──────────────────────────────────
+class _SymptomCheckerSheet extends StatefulWidget {
+  final Function(Set<String>) onPredict;
+
+  const _SymptomCheckerSheet({required this.onPredict});
+
+  @override
+  State<_SymptomCheckerSheet> createState() => _SymptomCheckerSheetState();
+}
+
+class _SymptomCheckerSheetState extends State<_SymptomCheckerSheet> {
+  final Set<String> _selectedIds = {};
+
+  void _toggle(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  Widget _buildGroup(String title, String category, Color color) {
+    final list = allSymptoms.where((s) => s.category == category).toList();
+    if (list.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8, top: 12),
+          child: Text(
+            title,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: list.map((s) {
+            final isSelected = _selectedIds.contains(s.id);
+            return GestureDetector(
+              onTap: () => _toggle(s.id),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected ? color : color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected ? color : color.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  s.label,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.white70,
+                    fontSize: 13,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: Color(0xFF111111),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.white12)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Symptom Checker",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white54),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+
+          // Symptom list
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              physics: const BouncingScrollPhysics(),
+              children: [
+                const Text(
+                  "Select all the symptoms you are currently experiencing:",
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+
+                _buildGroup("FEVER", "fever", Colors.redAccent),
+                _buildGroup("RESPIRATORY", "respiratory", Colors.lightBlue),
+                _buildGroup("GUT & DIGESTION", "gut", Colors.orange),
+                _buildGroup("SKIN", "skin", Colors.pinkAccent),
+                _buildGroup("EYES & E.N.T", "ent", Colors.purpleAccent),
+                _buildGroup("HEAD & NEURO", "neuro", Colors.deepPurpleAccent),
+                _buildGroup("HEART & METABOLIC", "cardio", Colors.red),
+                _buildGroup("GENERAL/BODY", "general", Colors.teal),
+
+                const SizedBox(height: 80), // padding for bottom button
+              ],
+            ),
+          ),
+
+          // Bottom sticky button
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            decoration: const BoxDecoration(
+              color: Color(0xFF111111),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black54,
+                  blurRadius: 10,
+                  offset: Offset(0, -4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Text(
+                  "${_selectedIds.length} selected",
+                  style: const TextStyle(color: Colors.white54, fontSize: 14),
+                ),
+                const Spacer(),
+                ElevatedButton(
+                  onPressed: _selectedIds.isEmpty
+                      ? null
+                      : () => widget.onPredict(_selectedIds),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.shade800,
+                    disabledBackgroundColor: Colors.white12,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        "Check Symptoms",
+                        style: TextStyle(
+                          color: _selectedIds.isEmpty
+                              ? Colors.white38
+                              : Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: 14,
+                        color: _selectedIds.isEmpty
+                            ? Colors.white38
+                            : Colors.white,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
